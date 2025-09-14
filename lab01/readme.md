@@ -48,11 +48,11 @@
 
 ![image](https://i.imgur.com/YnLMspe.png)
 
-- Создан каталог `Lab01` и в нём файл `backup.sh`.
+- Создан каталог `lab01` и в нём файл `backup.sh`.
 
 ```sh
-mkdir ~/Lab01
-cd ~/Lab01
+mkdir ~/lab01
+cd ~/lab01
 nano backup.sh
 ```
 
