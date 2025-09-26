@@ -1,0 +1,6 @@
+lab02/.venv/
+lab02/data/
+lab02/error.log
+lab02/.env
+**/__pycache__/
+.DS_Store
