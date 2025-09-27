@@ -80,6 +80,7 @@ lab02/
 ```bash
 cp sample.env .env
 ```
+
 и далее:
 
 ```bash
