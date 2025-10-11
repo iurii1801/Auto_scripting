@@ -1,0 +1,9 @@
+CRON_TZ=Europe/Chisinau
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Ежедневно 06:00 — курс MDL→EUR за вчера
+0 6 * * * python3 /app/currency_exchange_rate.py --from MDL --to EUR --date yesterday >> /var/log/cron.log 2>&1
+
+# Пятница 17:00 — курс MDL→USD за прошлую неделю
+0 17 * * 5 python3 /app/currency_exchange_rate.py --from MDL --to USD --date last_week >> /var/log/cron.log 2>&1

@@ -1,0 +1,10 @@
+services:
+  lab03-cron:
+    build: .
+    container_name: lab03-cron
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./cron.log:/var/log/cron.log
+    restart: unless-stopped
