@@ -3,22 +3,24 @@ pipeline {
         label 'php-agent'
     }
 
-    stages {
+    stages {        
         stage('Install Dependencies') {
             steps {
                 echo 'Preparing project...'
-                sh 'php -v'
+                // установка зависимостей проекта
+                sh 'composer install'
             }
         }
-
-        stage('Run Tests') {
+        
+        stage('Test') {
             steps {
                 echo 'Running tests...'
-                sh 'php tests/helpers_test.php'
+                // запуск юнит-тестов
+                sh './vendor/bin/phpunit --testdox'
             }
         }
     }
-
+    
     post {
         always {
             echo 'Pipeline completed.'
