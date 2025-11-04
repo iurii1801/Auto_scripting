@@ -132,7 +132,7 @@ docker exec -it jenkins-controller cat /var/jenkins_home/secrets/initialAdminPas
 
 #### 6.1 Создание SSH-ключей
 
-Необходимо создайть папку `secrets` в корне проекта и добавить в неё ключи `SSH`, необходимые для подключения к удаленным серверам.
+Необходимо создать папку `secrets` в корне проекта и добавить в неё ключи `SSH`, необходимые для подключения `Jenkins`-контроллера к `SSH`-агенту.
 
 Нужно поочерёдно выполнить команды:
 
@@ -215,7 +215,7 @@ docker compose up -d --build
    **Manage Jenkins → Plugins → Installed**
 2. В поиске ввести `SSH Build Agents`.
    Если плагин есть — отлично.
-   Если нет — перейти во вкладку **Available** и установи его.
+   Если нет — перейти во вкладку **Available** и установить его.
 
 ![image](https://i.imgur.com/yMkSJHL.png)
 
@@ -237,7 +237,7 @@ docker compose up -d --build
 #### 7.3 Создание узла-агента (Manage Nodes)
 
 1. Необходимо открыть **Manage Jenkins → Nodes → New Node**.
-2. Ввести имя — `ssh-agent1` и выберать **Permanent Agent**.
+2. Ввести имя — `ssh-agent1` и выбрать **Permanent Agent**.
 3. Настроить параметры:
 
    - **Remote root directory:** `/home/jenkins/agent`
@@ -255,36 +255,18 @@ docker compose up -d --build
 
 > После этого `Jenkins` сможет подключаться к агенту `ssh-agent` и выполнять конвейеры с лейблом `php-agent`.
 
-### Шаг 8. Создание конвейера `Jenkins` для PHP-проекта
+### Шаг 8. Создание конвейера Jenkins для PHP-проекта
 
-#### 8.1 Подготовка PHP-проекта для конвейера
+#### 8.1. Подготовка PHP-проекта и размещение в GitHub
 
-Для выполнения лабораторной работы использовался PHP-проект, подготовленный локально (ранее выполненная лабораторная работа).
-Проект был **распакован из архива** и размещён в каталоге `lab04`.
+Для выполнения лабораторной работы был использован PHP-проект **recipe-book**, ранее созданный в рамках курса по PHP-программированию. Проект был размещён в репозитории GitHub **[iurii1801/auto_scripting](https://github.com/iurii1801/auto_scripting)** в отдельной ветке `lab04`, в каталоге `lab04/recipe-book`.
 
-Он содержит базовые PHP-файлы и структуру, необходимую для демонстрации конвейера `Jenkins`.
-В проекте изначально не было модульных тестов, поэтому в лабораторной работе демонстрируется запуск конвейера с базовыми командами (например, проверка версии PHP или простая проверка синтаксиса).
+Проект содержит файлы PHP, конфигурацию Composer и простейшие юнит-тесты PHPUnit, размещённые в папке `tests`.
 
-#### 8.2 Создание Pipeline-job в Jenkins
+#### 8.2. Добавление `Jenkinsfile` в проект
 
-1. На главной странице Jenkins необходимо нажать **“Создать Item (New Item)”**.
-2. Ввести имя, например: **`php-lab04-pipeline`**.
-3. Выбрать тип **`Pipeline`** и нажать **OK**.
-
-В настройках задания:
-
-- во вкладке **General** можно оставить настройки по умолчанию;
-- отдельный чекбокс “Restrict where this project can be run” для pipeline-job не использовался —
-  привязка к агенту выполняется через `label` в самом Jenkinsfile.
-
-![image](https://i.imgur.com/6gZRoFs.png)
-
-#### 8.3 Настройка секции *Pipeline* (скрипт Jenkinsfile)
-
-Во вкладке **Pipeline**:
-
-1. В поле **Definition** необходимо выбрать вариант **`Pipeline script`**.
-2. В текстовое поле **Script** вставить следующий конвейер:
+Для автоматизации сборки и тестирования в корне папки `recipe-book` необходимо создать файл **`Jenkinsfile`**.
+Он описывает конвейер (`Pipeline`), состоящий из двух основных стадий — **установка зависимостей** и **тестирование**.
 
 ```groovy
 pipeline {
@@ -293,17 +275,20 @@ pipeline {
     }
 
     stages {
-        stage('Prepare Project') {
+        stage('Install Dependencies') {
             steps {
-                echo 'Preparing PHP project...'
-                sh 'php -v'
+                echo 'Preparing project...'
+                dir('lab04/recipe-book') {
+                    sh 'composer install'
+                }
             }
         }
 
-        stage('Run Simple Check') {
+        stage('Test') {
             steps {
-                echo 'Running syntax check...'
-                sh 'php -l index.php || echo "No syntax errors"'
+                dir('lab04/recipe-book') {
+                    sh './vendor/bin/phpunit --testdox tests'
+                }
             }
         }
     }
@@ -322,45 +307,66 @@ pipeline {
 }
 ```
 
-![image](https://i.imgur.com/uNAkmeb.png)
+> Конвейер выполняется на агенте `php-agent` (контейнере ssh-agent), устанавливает зависимости через `Composer` и запускает тесты `PHPUnit`.
+> Использование `dir('lab04/recipe-book')` позволяет выполнять команды в нужной директории проекта.
 
-Этот конвейер:
+#### 8.3. Настройка конвейера Jenkins
 
-- запускается **на агенте с меткой `php-agent`** (**SSH-агент в Docker**);
-- на шаге **Install Dependencies** выполняет установку зависимостей через **Composer**;
-- на шаге **Test** запускает модульные тесты с помощью **PHPUnit**;
-- в блоке `post` выводит сообщения о статусе выполнения.
+На главной странице `Jenkins` необходимо создать новый элемент (**New Item**) с именем `php-lab04-pipeline` и типом **Pipeline**.
+Во вкладке **Pipeline** выбрать вариант **Pipeline script from SCM**, где задать параметры:
 
-#### 8.4 Запуск и проверка конвейера
+- **SCM:** Git
+- **Repository URL:** `https://github.com/iurii1801/auto_scripting.git`
+- **Credentials:** `jenkins`
+- **Branch Specifier:** `*/lab04`
+- **Script Path:** `lab04/recipe-book/Jenkinsfile`
 
-1. На странице задания **`php-lab04-pipeline`** необходимо нажать **“Собрать сейчас (Build Now)”**.
-2. В левой части появится новый билд `#1`.
-3. Нажать по билду → **Console Output**, чтобы посмотреть лог.
+![image](https://i.imgur.com/H2hP8kn.png)
+![image](https://i.imgur.com/W7QuxeN.png)
 
+> Эти параметры позволяют Jenkins автоматически загружать конвейер из ветки `lab04` и использовать соответствующий Jenkinsfile из папки проекта.
 
-В логе должны быть строки примерно такого вида:
+#### 8.4. Запуск и проверка конвейера
+
+После сохранения конфигурации конвейер нужно запустить вручную с помощью кнопки **“Собрать сейчас (Build Now)”**.
+В процессе выполнения `Jenkins` выполнит следующие действия:
+
+1. Клонирует репозиторий с GitHub;
+2. Устанавливает зависимости проекта (`composer install`);
+3. Запускает тесты PHPUnit из каталога `tests`;
+4. Завершает сборку успешно.
+
+Фрагмент лога выполнения:
 
 ```text
-[Pipeline] Start of Pipeline
-[Pipeline] node
-Running on ssh-agent1 in /home/jenkins/agent/workspace/php-lab04-pipeline
-[Pipeline] stage (Prepare Project)
-[Pipeline] sh
-+ php -v
-...
-[Pipeline] stage (Run Simple Check)
-[Pipeline] sh
-+ php -l index.php || echo "No syntax errors"
-...
-[Pipeline] echo
++ composer install
+Loading composer repositories with package information
+Installing dependencies from lock file
+Generating autoload files
++ ./vendor/bin/phpunit --testdox tests
+PHPUnit 10.5.58 by Sebastian Bergmann and contributors.
+
+Sample
+ ✔ testTrue
+
 All stages completed successfully!
 Finished: SUCCESS
 ```
 
-![image](https://i.imgur.com/WO89hou.png)
+> Результат выполнения показывает, что все этапы прошли успешно, а тесты были выполнены без ошибок.
+> Jenkins автоматически отметил сборку как **успешную (SUCCESS)**.
 
-> В результате конвейер **php-lab04-pipeline** успешно выполнился.
-> `Jenkins` выполнил все этапы (Prepare Project и Run Simple Check) на агенте `ssh-agent1`, что подтверждается зелёной меткой *SUCCESS*.
+#### 8.5. Итог
+
+Таким образом, в рамках данного шага был реализован полный цикл `CI/CD`-процесса для PHP-проекта:
+
+- исходный код хранится в GitHub;
+- Jenkins автоматически загружает проект, устанавливает зависимости и выполняет тесты;
+- результаты отображаются в панели Jenkins.
+
+![image](https://i.imgur.com/vmQ70WW.png)
+
+> Это подтверждает успешное выполнение лабораторной работы и корректную настройку системы `Jenkins` для автоматизации задач `DevOps`.
 
 ---
 
