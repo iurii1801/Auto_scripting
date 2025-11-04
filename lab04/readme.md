@@ -85,7 +85,7 @@ docker compose up -d
 
 ### Шаг 4. Вход в `Jenkins` и завершение первичной настройки
 
-Перед началом необходимо узнать пароль для входа. 
+Перед началом необходимо узнать пароль для входа.
 
 Сделать это можно командой:
 
@@ -160,10 +160,13 @@ ssh-keygen -f jenkins_agent_ssh_key
 ```dockerfile
 FROM jenkins/ssh-agent
 
-RUN apt-get update && apt-get install -y php-cli
+RUN apt-get update \
+ && apt-get install -y php-cli php-xml php-mbstring git curl unzip \
+ && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+ && rm -rf /var/lib/apt/lists/*
 ```
 
-![image](https://i.imgur.com/Fu6r2fr.png)
+![image](https://i.imgur.com/A48D3sn.png)
 
 > Этот **`Dockerfile`** создаёт образ на основе официального `jenkins/ssh-agent` и устанавливает PHP для последующих тестов.
 
