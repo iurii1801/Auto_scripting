@@ -16,9 +16,7 @@ pipeline {
         stage('Test') {
             steps {
                 dir('lab04/recipe-book') {
-                    // запуск тестов
-                    sh './vendor/bin/phpunit --testdox'
-                    // либо команда, которая у тебя реально запускает тесты
+                    sh './vendor/bin/phpunit --testdox tests'
                 }
             }
         }
