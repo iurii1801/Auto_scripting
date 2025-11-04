@@ -3,24 +3,27 @@ pipeline {
         label 'php-agent'
     }
 
-    stages {        
+    stages {
         stage('Install Dependencies') {
             steps {
                 echo 'Preparing project...'
-                // установка зависимостей проекта
-                sh 'composer install'
+                dir('lab04/recipe-book') {
+                    sh 'composer install'
+                }
             }
         }
-        
+
         stage('Test') {
             steps {
-                echo 'Running tests...'
-                // запуск юнит-тестов
-                sh './vendor/bin/phpunit --testdox'
+                dir('lab04/recipe-book') {
+                    // запуск тестов
+                    sh './vendor/bin/phpunit --testdox'
+                    // либо команда, которая у тебя реально запускает тесты
+                }
             }
         }
     }
-    
+
     post {
         always {
             echo 'Pipeline completed.'
