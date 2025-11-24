@@ -4,7 +4,6 @@ pipeline {
     environment {
         REPO_URL    = 'https://github.com/iurii1801/auto_scripting.git'
         REPO_BRANCH = 'lab05'
-        // Путь к PHP-проекту внутри репозитория
         PROJECT_DIR = 'lab05/recipe-book'
     }
 
@@ -40,7 +39,8 @@ pipeline {
                         mkdir -p build/logs
                         ./vendor/bin/phpunit \
                           --colors=always \
-                          --log-junit build/logs/junit.xml
+                          --log-junit build/logs/junit.xml \
+                          tests
                     '''
                 }
             }
