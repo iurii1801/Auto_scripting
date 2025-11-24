@@ -284,13 +284,14 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Устанавливаем SSH-сервер, Python и Ansible
+# Устанавливаем SSH-сервер, Python, Ansible и Java
 RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-server \
     python3 \
     python3-pip \
     ansible \
     git \
+    openjdk-21-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # Создаём пользователя ansible
@@ -302,19 +303,21 @@ RUN useradd -m -d /home/ansible -s /bin/bash ansible && \
 RUN mkdir -p /var/run/sshd
 
 # Публичный ключ Jenkins -> Ansible-агент
+# jenkins_ansible_ssh_key.pub будет сгенерирован в разделе 3.2
 COPY secrets/jenkins_ansible_ssh_key.pub /home/ansible/.ssh/authorized_keys
+
 RUN chown ansible:ansible /home/ansible/.ssh/authorized_keys && \
     chmod 700 /home/ansible/.ssh && \
     chmod 600 /home/ansible/.ssh/authorized_keys
 
-# Ключи Ansible-агента для подключения к тестовому серверу
+# Ключи Ansible-агента для подключения к тестовому серверу (раздел 3.3)
 COPY secrets/ansible_test_ssh_key /home/ansible/.ssh/id_ed25519
 COPY secrets/ansible_test_ssh_key.pub /home/ansible/.ssh/id_ed25519.pub
 
 RUN chown ansible:ansible /home/ansible/.ssh/id_ed25519* && \
     chmod 600 /home/ansible/.ssh/id_ed25519
 
-# Папка для будущих настроек Ansible
+# Папка для будущих настроек Ansible (inventory, ansible.cfg)
 RUN mkdir -p /etc/ansible && chown -R ansible:ansible /etc/ansible
 
 EXPOSE 22
@@ -322,7 +325,7 @@ EXPOSE 22
 CMD ["/usr/sbin/sshd", "-D", "-e"]
 ```
 
-![image](https://i.imgur.com/3SNLZyw.png)
+![image](https://i.imgur.com/QJFH16v.png)
 
 #### 3.2. Генерация SSH-ключей для Jenkins → Ansible-агент
 
@@ -646,9 +649,280 @@ test-server ansible_host=test-server ansible_port=22 ansible_user=ansible ansibl
 - включает сайт `recipe-book`, отключает дефолтный `000-default.conf`;
 - применяет изменения через хэндлер `Reload Apache` и гарантирует, что служба `apache2` запущена и включена в автозапуск.
 
-Скриншоты файлов:
-
 ![image](https://i.imgur.com/XQoFec4.png)
 ![image](https://i.imgur.com/K6AbF7l.png)
 ![image](https://i.imgur.com/advbKpL.png)
+
+### Шаг 6. Настройка и запуск Jenkins Pipeline для тестирования PHP-проекта
+
+На этом шаге создаётся Pipeline-задача в Jenkins, которая будет выполнять автоматическую сборку и тестирование PHP-проекта с использованием PHPUnit.
+Pipeline запускается на созданном ранее SSH-агенте и использует Jenkinsfile (Groovy Pipeline Script), расположенный в репозитории GitHub.
+
+#### 6.1. Создание нового Pipeline-проекта в Jenkins
+
+1. В интерфейсе Jenkins необходимо нажать **New Item**.
+2. Ввести имя задачи, например:
+   **`php-build-test`**
+3. Выбрать тип задачи **Pipeline**.
+4. Нажать **OK**.
+
+![image](https://i.imgur.com/h2OVWkX.png)
+
+#### 6.2. Настройка Pipeline Script From SCM
+
+В разделе **Pipeline → Definition** выбрать:
+
+- **Pipeline script from SCM**
+- SCM: **Git**
+- Repository URL:
+  `https://github.com/iurii1801/Auto_scripting`
+- Branches to build:
+  `*/lab05`
+- Script Path:
+  `lab05/pipelines/php_build_and_test_pipeline.groovy`
+
+![image](https://i.imgur.com/BbLK1tW.png)
+![image](https://i.imgur.com/8G6oNcK.png)
+
+#### 6.3. Конфигурация Pipeline-файла
+
+Файл `php_build_and_test_pipeline.groovy` загружается Jenkins'ом из GitHub.
+Он выполняет:
+
+- клонирование проекта;
+- установку зависимостей через Composer;
+- запуск PHPUnit тестов;
+- архивирование результатов тестирования.
+
+Код `Pipeline`:
+
+```groovy
+pipeline {
+    agent { label 'ssh-agent' }
+
+    environment {
+        REPO_URL    = 'https://github.com/iurii1801/auto_scripting.git'
+        REPO_BRANCH = 'lab05'
+        PROJECT_DIR = 'lab05/recipe-book'
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    stages {
+        stage('Checkout project') {
+            steps {
+                echo "Cloning auto_scripting repository (branch: ${env.REPO_BRANCH})..."
+                git branch: "${env.REPO_BRANCH}", url: "${env.REPO_URL}"
+            }
+        }
+
+        stage('Install Composer dependencies') {
+            steps {
+                echo "Installing Composer dependencies inside ${env.PROJECT_DIR}..."
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        composer install --no-interaction --prefer-dist --no-progress
+                    '''
+                }
+            }
+        }
+
+        stage('Run PHPUnit tests') {
+            steps {
+                echo "Running PHPUnit tests..."
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        mkdir -p build/logs
+                        ./vendor/bin/phpunit \
+                          --colors=always \
+                          --log-junit build/logs/junit.xml \
+                          tests
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "Archiving test reports..."
+            archiveArtifacts artifacts: "${env.PROJECT_DIR}/build/logs/**/*.xml", fingerprint: true
+            junit "${env.PROJECT_DIR}/build/logs/**/*.xml"
+        }
+
+        success {
+            echo "Tests passed successfully!"
+        }
+
+        failure {
+            echo "Tests failed! Check console output and reports."
+        }
+    }
+}
+```
+
+![image](https://i.imgur.com/tWusZlI.png)
+![image](https://i.imgur.com/SrY4OXJ.png)
+
+#### 6.4. Запуск Pipeline
+
+После сохранения настроек необходимо нажать:
+
+`Build Now`
+
+Процесс сборки включает:
+
+- получение кода из GitHub;
+- запуск контейнера ssh-agent;
+- установку зависимостей Composer;
+- выполнение PHPUnit тестов;
+- генерацию отчёта JUnit.
+
+![image](https://i.imgur.com/1pxc7BF.png)
+![image](https://i.imgur.com/gu8pL5a.png)
+![image](https://i.imgur.com/42Dl3Cb.png)
+
+#### 6.5. Проверка отчётов о тестах
+
+После успешного запуска:
+
+- появится вкладка **Test Results**
+- будет доступен артефакт `junit.xml`
+
+![image](https://i.imgur.com/SAiei5j.png)
+
+После выполнения всех этапов:
+
+- Pipeline выполняется без ошибок
+- Composer устанавливает зависимости
+- PHPUnit запускает тесты
+- Отчёт тестирования сохраняется как артефакт
+- Jenkins показывает **SUCCESS ✓**
+
+### Шаг 7. Конвейер для настройки тестового сервера с помощью Ansible
+
+На этом шаге создаётся отдельный Jenkins Pipeline, который выполняет автоматическую настройку тестового сервера с помощью Ansible-агента.
+Конвейер использует ранее созданный агент **ansible-agent**, подключённый по SSH и успешно запущенный (см. скриншоты подтверждения подключения).
+
+#### 7.1. Создание файла `ansible_setup_pipeline.groovy`
+
+В каталоге `lab05/pipelines/` необходимо создать файл `ansible_setup_pipeline.groovy`
+
+Этот pipeline должен:
+
+1. Клонировать GitHub-репозиторий с Ansible playbook.
+2. Запустить выполнение playbook на тестовом сервере через Ansible-агент.
+
+Содержимое файла:
+
+```groovy
+pipeline {
+    agent { label 'ansible-agent' }
+
+    environment {
+        REPO_URL        = 'https://github.com/iurii1801/Auto_scripting.git'
+        REPO_BRANCH     = 'lab05'
+        ANSIBLE_DIR     = 'lab05/ansible'
+        INVENTORY_FILE  = 'hosts.ini'
+        PLAYBOOK_FILE   = 'setup_test_server.yml'
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    stages {
+
+        stage('Checkout Ansible repo') {
+            steps {
+                echo "Cloning repository with Ansible playbook (branch: ${env.REPO_BRANCH})..."
+                git branch: "${env.REPO_BRANCH}", url: "${env.REPO_URL}"
+            }
+        }
+
+        stage('Run Ansible playbook') {
+            steps {
+                echo "Running Ansible playbook ${env.PLAYBOOK_FILE}..."
+                dir("${env.ANSIBLE_DIR}") {
+                    sh """
+                        ansible-playbook -i ${env.INVENTORY_FILE} ${env.PLAYBOOK_FILE}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Ansible setup completed successfully!"
+        }
+        failure {
+            echo "Ansible setup failed. Check console output for details."
+        }
+    }
+}
+```
+
+![image](https://i.imgur.com/mZnOH7H.png)
+![image](https://i.imgur.com/eHY9rYS.png)
+
+#### 7.2. Создание нового Pipeline в Jenkins
+
+1. В разделе Jenkins необходимо нажать **New Item**.
+2. Ввести имя задачи, например:
+
+   `ansible-agent`
+3. Выбрать тип **Pipeline**.
+4. Нажать **OK**.
+
+![image](https://i.imgur.com/Shpmrwj.png)
+
+#### 7.3. Настройка Pipeline из SCM
+
+В разделе **Pipeline**:
+
+- **Definition** → *Pipeline script from SCM*
+- **SCM** → *Git*
+- Repository URL:
+
+  ```
+  https://github.com/iurii1801/Auto_scripting.git
+  ```
+- Branch:
+
+  ```
+  */lab05
+  ```
+- Script Path:
+
+  ```
+  lab05/pipelines/ansible_setup_pipeline.groovy
+  ```
+
+![image](https://i.imgur.com/bjHySkm.png)
+![image](https://i.imgur.com/YT5DxId.png)
+
+#### 7.4. Запуск конвейера
+
+После сохранения необходимо нажать `Build Now`
+
+После успешного выполнения Pipeline:
+
+- Playbook `setup_test_server.yml` выполнится на тестовом сервере.
+- Apache2 будет установлен.
+- PHP-окружение будет настроено.
+- Виртуальный хост `recipe-book` будет активирован.
+- Тестовый сервер будет полностью готов.
+
+Консоль Jenkins должна завершиться сообщением:
+
+```
+Ansible setup completed successfully!
+```
+
+![image](https://i.imgur.com/7BNa46h.png)
 
