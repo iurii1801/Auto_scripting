@@ -4,7 +4,7 @@ pipeline {
     environment {
         REPO_URL    = 'https://github.com/iurii1801/auto_scripting.git'
         REPO_BRANCH = 'lab05'
-        PROJECT_DIR = 'lab04'
+        PPROJECT_DIR = 'lab05/recipe-book'
     }
 
     options {
