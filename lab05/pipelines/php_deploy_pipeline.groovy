@@ -7,6 +7,7 @@ pipeline {
         ANSIBLE_DIR    = 'lab05/ansible'
         INVENTORY_FILE = 'hosts.ini'
         PLAYBOOK_FILE  = 'deploy_recipe_book.yml'
+        ANSIBLE_HOST_KEY_CHECKING = 'False'
     }
 
     options {
