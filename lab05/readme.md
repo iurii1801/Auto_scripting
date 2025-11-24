@@ -1194,32 +1194,6 @@ http://localhost:8088
 - Ansible playbook отработал без ошибок
 - деплой через Jenkins завершился успешно
 
-#### Примечание: Dockerfile, используемый для сборки контейнера PHP-проекта
-
-Для работы приложения используется Docker-образ, созданный на основе следующего Dockerfile, расположенного в каталоге `lab05/docker/Dockerfile`:
-
-```dockerfile
-FROM php:8.2-apache
-
-RUN docker-php-ext-install pdo pdo_mysql
-
-COPY ./recipe-book/public /var/www/html/
-
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
-```
-
-![image](https://i.imgur.com/MahzOAz.png)
-
-Данный Dockerfile:
-
-- использует базовый образ `php:8.2-apache`, включающий веб-сервер Apache и PHP 8.2;
-- устанавливает необходимые расширения `pdo` и `pdo_mysql` для работы с базой данных;
-- копирует публичную часть приложения `recipe-book` (директория `public`) в корневой каталог веб-сервера `/var/www/html`;
-- устанавливает корректные права доступа для пользователя Apache (`www-data`).
-
-Этот образ применяется во время тестирования и обеспечивает корректную работу размещённого PHP-приложения.
-
 ---
 
 ## Контрольные вопросы и ответы
