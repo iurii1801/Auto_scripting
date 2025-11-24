@@ -4,7 +4,8 @@ pipeline {
     environment {
         REPO_URL    = 'https://github.com/iurii1801/auto_scripting.git'
         REPO_BRANCH = 'lab05'
-        PPROJECT_DIR = 'lab05/recipe-book'
+        // Путь к PHP-проекту внутри репозитория
+        PROJECT_DIR = 'lab05/recipe-book'
     }
 
     options {
@@ -15,31 +16,33 @@ pipeline {
     stages {
         stage('Checkout project') {
             steps {
-                echo "Cloning auto_scripting repository..."
-                git branch: "${REPO_BRANCH}", url: "${REPO_URL}"
+                echo "Cloning auto_scripting repository (branch: ${env.REPO_BRANCH})..."
+                git branch: "${env.REPO_BRANCH}", url: "${env.REPO_URL}"
             }
         }
 
         stage('Install Composer dependencies') {
             steps {
-                echo "Installing Composer dependencies inside ${PROJECT_DIR}..."
-                sh """
-                    cd ${PROJECT_DIR}
-                    composer install --no-interaction --prefer-dist --no-progress
-                """
+                echo "Installing Composer dependencies inside ${env.PROJECT_DIR}..."
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        composer install --no-interaction --prefer-dist --no-progress
+                    '''
+                }
             }
         }
 
         stage('Run PHPUnit tests') {
             steps {
                 echo "Running PHPUnit tests..."
-                sh """
-                    cd ${PROJECT_DIR}
-                    mkdir -p build/logs
-                    ./vendor/bin/phpunit \
-                        --colors=always \
-                        --log-junit build/logs/junit.xml
-                """
+                dir("${env.PROJECT_DIR}") {
+                    sh '''
+                        mkdir -p build/logs
+                        ./vendor/bin/phpunit \
+                          --colors=always \
+                          --log-junit build/logs/junit.xml
+                    '''
+                }
             }
         }
     }
@@ -47,8 +50,8 @@ pipeline {
     post {
         always {
             echo "Archiving test reports..."
-            archiveArtifacts artifacts: "${PROJECT_DIR}/build/logs/**/*.xml", fingerprint: true
-            junit "${PROJECT_DIR}/build/logs/**/*.xml"
+            archiveArtifacts artifacts: "${env.PROJECT_DIR}/build/logs/**/*.xml", fingerprint: true
+            junit "${env.PROJECT_DIR}/build/logs/**/*.xml"
         }
 
         success {
