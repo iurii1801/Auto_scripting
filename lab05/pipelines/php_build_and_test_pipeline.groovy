@@ -1,21 +1,18 @@
 pipeline {
-
     agent { label 'ssh-agent' }
 
     environment {
-        REPO_URL = 'https://github.com/iurii1801/auto_scripting.git'
-        REPO_BRANCH = 'lab04'
-        PROJECT_DIR = 'lab04'   
+        REPO_URL    = 'https://github.com/iurii1801/auto_scripting.git'
+        REPO_BRANCH = 'lab05'
+        PROJECT_DIR = 'lab04'
     }
 
     options {
         timestamps()
-        ansiColor('xterm')
         disableConcurrentBuilds()
     }
 
     stages {
-
         stage('Checkout project') {
             steps {
                 echo "Cloning auto_scripting repository..."
@@ -40,19 +37,17 @@ pipeline {
                     cd ${PROJECT_DIR}
                     mkdir -p build/logs
                     ./vendor/bin/phpunit \
-                      --colors=always \
-                      --log-junit build/logs/junit.xml
+                        --colors=always \
+                        --log-junit build/logs/junit.xml
                 """
             }
         }
     }
 
     post {
-
         always {
             echo "Archiving test reports..."
             archiveArtifacts artifacts: "${PROJECT_DIR}/build/logs/**/*.xml", fingerprint: true
-
             junit "${PROJECT_DIR}/build/logs/**/*.xml"
         }
 
