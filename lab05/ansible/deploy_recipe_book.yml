@@ -1,0 +1,55 @@
+---
+- name: Deploy recipe-book PHP application to test server
+  hosts: test_server
+  become: yes
+  become_user: root
+
+  vars:
+    app_root: /var/www/recipe-book
+    repo_url: 'https://github.com/iurii1801/Auto_scripting.git'
+    repo_branch: 'lab05'
+    src_dir: /opt/auto_scripting
+
+  tasks:
+    - name: Ensure git is installed
+      ansible.builtin.apt:
+        name: git
+        state: present
+        update_cache: yes
+
+    - name: Create source directory
+      ansible.builtin.file:
+        path: "{{ src_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Clone Auto_scripting repository with PHP project
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ src_dir }}"
+        version: "{{ repo_branch }}"
+        force: yes
+
+    - name: Copy recipe-book application to Apache docroot
+      ansible.builtin.copy:
+        src: "{{ src_dir }}/lab05/recipe-book/"
+        dest: "{{ app_root }}/"
+        owner: www-data
+        group: www-data
+        mode: "0755"
+        remote_src: yes
+      notify: Reload Apache
+
+    - name: Ensure correct permissions on app root
+      ansible.builtin.file:
+        path: "{{ app_root }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        recurse: yes
+
+  handlers:
+    - name: Reload Apache
+      ansible.builtin.service:
+        name: apache2
+        state: restarted
