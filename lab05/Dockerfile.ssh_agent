@@ -1,0 +1,33 @@
+# SSH-агент для сборки PHP-проекта
+FROM php:8.3-cli
+
+# Устанавливаем SSH-сервер и нужные утилиты
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openssh-server \
+    git \
+    unzip \
+    zip \
+    rsync \
+ && rm -rf /var/lib/apt/lists/*
+
+# Устанавливаем Composer (для установки зависимостей PHP-проекта)
+RUN curl -sS https://getcomposer.org/installer | php -- \
+      --install-dir=/usr/local/bin --filename=composer
+
+# Создаем пользователя, от имени которого Jenkins будет подключаться
+RUN useradd -m -d /home/jenkins -s /bin/bash jenkins
+
+# Готовим SSH
+RUN mkdir -p /var/run/sshd
+
+# Копируем публичный ключ в контейнер (ключи уже лежат в папке secrets из lab04)
+# jenkins_agent_ssh_key.pub — ПУБЛИЧНЫЙ ключ
+COPY secrets/jenkins_agent_ssh_key.pub /home/jenkins/.ssh/authorized_keys
+
+RUN chown -R jenkins:jenkins /home/jenkins/.ssh && \
+    chmod 700 /home/jenkins/.ssh && \
+    chmod 600 /home/jenkins/.ssh/authorized_keys
+
+EXPOSE 22
+
+CMD ["/usr/sbin/sshd", "-D", "-e"]

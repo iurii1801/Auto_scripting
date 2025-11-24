@@ -1,0 +1,97 @@
+---
+- name: Setup test server for PHP application
+  hosts: test_server
+  become: yes
+  become_user: root
+
+  vars:
+    app_root: /var/www/recipe-book
+    app_public: /var/www/recipe-book/public
+    server_name: recipe-book.local
+
+  tasks:
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Apache2
+      ansible.builtin.apt:
+        name: apache2
+        state: present
+
+    - name: Install PHP and required extensions
+      ansible.builtin.apt:
+        name:
+          - php
+          - libapache2-mod-php
+          - php-cli
+          - php-mbstring
+          - php-xml
+          - php-mysql
+        state: present
+
+    - name: Enable Apache rewrite module
+      ansible.builtin.command: a2enmod rewrite
+      args:
+        warn: false
+      notify: Reload Apache
+
+    - name: Create application root directory
+      ansible.builtin.file:
+        path: "{{ app_root }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Ensure public directory exists
+      ansible.builtin.file:
+        path: "{{ app_public }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: "0755"
+
+    - name: Configure Apache virtual host for recipe-book
+      ansible.builtin.copy:
+        dest: /etc/apache2/sites-available/recipe-book.conf
+        content: |
+          <VirtualHost *:80>
+              ServerName {{ server_name }}
+              DocumentRoot {{ app_public }}
+
+              <Directory {{ app_public }}>
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+
+              ErrorLog ${APACHE_LOG_DIR}/recipe-book_error.log
+              CustomLog ${APACHE_LOG_DIR}/recipe-book_access.log combined
+          </VirtualHost>
+      notify: Reload Apache
+
+    - name: Enable recipe-book site
+      ansible.builtin.command: a2ensite recipe-book.conf
+      args:
+        warn: false
+      notify: Reload Apache
+
+    - name: Disable default Apache site
+      ansible.builtin.command: a2dissite 000-default.conf
+      args:
+        warn: false
+      ignore_errors: yes
+      notify: Reload Apache
+
+    - name: Ensure Apache2 is running and enabled
+      ansible.builtin.service:
+        name: apache2
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: Reload Apache
+      ansible.builtin.service:
+        name: apache2
+        state: restarted
