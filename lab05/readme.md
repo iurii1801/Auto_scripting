@@ -918,11 +918,349 @@ pipeline {
 - Виртуальный хост `recipe-book` будет активирован.
 - Тестовый сервер будет полностью готов.
 
-Консоль Jenkins должна завершиться сообщением:
-
-```
-Ansible setup completed successfully!
-```
-
 ![image](https://i.imgur.com/7BNa46h.png)
 
+### Шаг 8. Конвейер для размещения PHP-проекта на тестовом сервере
+
+На этом шаге создаётся отдельный Jenkins-конвейер, задача которого — **развернуть PHP-приложение на тестовом сервере** с помощью Ansible, используя ранее созданный `ansible-agent`.
+
+Конвейер выполняет:
+
+- клонирование репозитория с PHP-проектом;
+- передачу файлов проекта на тестовый сервер;
+- выполнение Ansible playbook для установки и настройки тестового окружения.
+
+#### 8.1. Создание файла `php_deploy_pipeline.groovy`
+
+В папке `lab05/pipelines/` необходимо создать новый файл `php_deploy_pipeline.groovy` и поместить туда следующий pipeline-скрипт:
+
+```groovy
+pipeline {
+    agent { label 'ansible-agent' }
+
+    environment {
+        REPO_URL       = 'https://github.com/iurii1801/Auto_scripting.git'
+        REPO_BRANCH    = 'lab05'
+        ANSIBLE_DIR    = 'lab05/ansible'
+        INVENTORY_FILE = 'hosts.ini'
+        PLAYBOOK_FILE  = 'deploy_recipe_book.yml'
+    }
+
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+    }
+
+    stages {
+
+        stage('Checkout repo with PHP project') {
+            steps {
+                echo "Cloning repository with PHP project (branch: ${env.REPO_BRANCH})..."
+                git branch: "${env.REPO_BRANCH}", url: "${env.REPO_URL}"
+            }
+        }
+
+        stage('Deploy PHP project to test server') {
+            steps {
+                echo "Running Ansible deploy playbook ${env.PLAYBOOK_FILE}..."
+                dir("${env.ANSIBLE_DIR}") {
+                    sh """
+                        ansible-playbook -i ${env.INVENTORY_FILE} ${env.PLAYBOOK_FILE}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "PHP project has been successfully deployed to the test server."
+        }
+        failure {
+            echo "Deployment failed. Check console output and Ansible logs."
+        }
+    }
+}
+```
+
+![image](https://i.imgur.com/GiF5kLs.png)
+![image](https://i.imgur.com/onnAnlx.png)
+
+#### 8.2. Ansible playbook, выполняющий деплой PHP проекта
+
+В папке `lab05/ansible/` был создан файл `deploy_recipe_book.yml`, содержащий следующий playbook:
+
+```yml
+---
+- name: Deploy recipe-book PHP application to test server
+  hosts: test_server
+  become: yes
+  become_user: root
+
+  vars:
+    app_root: /var/www/recipe-book
+    repo_url: 'https://github.com/iurii1801/Auto_scripting.git'
+    repo_branch: 'lab05'
+    src_dir: /opt/auto_scripting
+
+  tasks:
+    - name: Ensure git is installed
+      ansible.builtin.apt:
+        name: git
+        state: present
+        update_cache: yes
+
+    - name: Create source directory
+      ansible.builtin.file:
+        path: "{{ src_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Clone Auto_scripting repository with PHP project
+      ansible.builtin.git:
+        repo: "{{ repo_url }}"
+        dest: "{{ src_dir }}"
+        version: "{{ repo_branch }}"
+        force: yes
+
+    - name: Copy recipe-book application to Apache docroot
+      ansible.builtin.copy:
+        src: "{{ src_dir }}/lab05/recipe-book/"
+        dest: "{{ app_root }}/"
+        owner: www-data
+        group: www-data
+        mode: "0755"
+        remote_src: yes
+      notify: Reload Apache
+
+    - name: Ensure correct permissions on app root
+      ansible.builtin.file:
+        path: "{{ app_root }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        recurse: yes
+    
+    - name: Ensure Apache is installed
+      ansible.builtin.apt:
+       name: apache2
+       state: present
+       update_cache: yes
+
+    - name: Ensure Apache is running
+      ansible.builtin.service:
+       name: apache2
+       state: started
+       enabled: yes
+       
+  handlers:
+  - name: Reload Apache
+    ansible.builtin.service:
+      name: apache2
+      state: restarted
+```
+
+![image](https://i.imgur.com/SZCSRHL.png)
+![image](https://i.imgur.com/qGiPaU1.png)
+
+Playbook выполняет:
+
+- установку git;
+- клонирование PHP-проекта;
+- копирование в `/var/www/recipe-book`;
+- установку Apache;
+- перезапуск Apache.
+
+#### 8.3. Создание нового Pipeline в Jenkins
+
+1. Необходимо открыть **Jenkins** → **New Item**
+2. Ввести имя: **php-deploy**
+3. Выбрать тип: **Pipeline**
+
+![image](https://i.imgur.com/qZmzITp.png)
+
+#### 8.4. Настройка Pipeline через SCM
+
+В настройках:
+
+1. Необходимо перейти в раздел **Pipeline**
+2. Выбрать источник: **Pipeline script from SCM**
+3. SCM → **Git**
+4. Repository URL:
+
+```
+https://github.com/iurii1801/Auto_scripting.git
+```
+
+5. Branch Specifier:
+
+```
+*/lab05
+```
+
+6. Script Path:
+
+```
+lab05/pipelines/php_deploy_pipeline.groovy
+```
+
+![image](https://i.imgur.com/oRxuxMl.png)
+![image](https://i.imgur.com/Fn9m7DG.png)
+
+После этого необходимо нажать **Save**.
+
+#### 8.5. Запуск конвейера
+
+Необходимо нажать **Build Now**.
+
+Успешный запуск выглядит так:
+
+![image](https://i.imgur.com/yF9C0WH.png)
+
+#### 8.6. Вывод на консоль (успешный)
+
+В **Console Output** видно:
+
+- репозиторий был успешно склонирован;
+- запущен Ansible playbook;
+- ошибок нет.
+
+![image](https://i.imgur.com/dFLF52O.png)
+![image](https://i.imgur.com/1an9tv0.png)
+
+### Шаг 9. Тестирование размещенного PHP-проекта
+
+На этом шаге необходимо убедиться, что PHP-приложение **recipe-book**, развернутое с помощью Jenkins + Ansible, действительно доступно пользователю через браузер и корректно работает.
+
+#### 9.1. Проверка статуса контейнеров
+
+Сначала необходимо проверить, что все необходимые контейнеры запущены:
+
+```bash
+docker ps
+```
+
+В выводе должны быть контейнеры:
+
+- `jenkins-controller`
+- `ssh-agent`
+- `ansible-agent`
+- контейнер с PHP-приложением (в моем случае — `recipe-book-test`), опубликованный на порту **8088 → 80**.
+
+![image](https://i.imgur.com/ijC2t33.png)
+
+#### 9.2. Открытие приложения в браузере
+
+Далее необходимо открыть веб-браузер на хост-машине и перейти по адресу:
+
+```
+http://localhost:8088
+```
+
+Этот адрес соответствует HTTP-порту контейнера, в котором размещено приложение `recipe-book`.
+
+На экране отображается главная страница приложения — блок **«Последние рецепты»**:
+
+- заголовок **«Последние рецепты»**;
+- сообщение «Пока нет рецептов», если база данных пуста;
+- ссылки **«Добавить новый рецепт»** и **«Все рецепты»**.
+
+![image](https://i.imgur.com/TNPsUvl.png)
+
+Это подтверждает, что:
+
+- PHP-код корректно выполняется внутри контейнера;
+- веб-сервер Apache успешно обслуживает статические и динамические страницы приложения;
+- развертывание проекта через конвейер Jenkins и Ansible прошло успешно, а тестовый сервер полностью готов к использованию.
+
+#### Примечание: Dockerfile, используемый для сборки контейнера PHP-проекта
+
+Для работы приложения используется Docker-образ, созданный на основе следующего Dockerfile, расположенного в каталоге `lab05/docker/Dockerfile`:
+
+```dockerfile
+FROM php:8.2-apache
+
+RUN docker-php-ext-install pdo pdo_mysql
+
+COPY ./recipe-book/public /var/www/html/
+
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html
+```
+
+![image](https://i.imgur.com/MahzOAz.png)
+
+Данный Dockerfile:
+
+- использует базовый образ `php:8.2-apache`, включающий веб-сервер Apache и PHP 8.2;
+- устанавливает необходимые расширения `pdo` и `pdo_mysql` для работы с базой данных;
+- копирует публичную часть приложения `recipe-book` (директория `public`) в корневой каталог веб-сервера `/var/www/html`;
+- устанавливает корректные права доступа для пользователя Apache (`www-data`).
+
+Этот образ применяется во время тестирования и обеспечивает корректную работу размещённого PHP-приложения.
+
+---
+
+## Контрольные вопросы и ответы
+
+### 1. Какие преимущества использования Ansible для настройки серверов?
+
+Ansible обеспечивает полностью автоматизированную, повторяемую и предсказуемую конфигурацию серверов. Его ключевое преимущество — отсутствие необходимости устанавливать агенты на целевых машинах: управление происходит по SSH. Playbook'и описываются декларативно, что делает процесс понятным и легко читаемым. Кроме того, Ansible позволяет с одинаковой лёгкостью настраивать как единичный сервер, так и десятки узлов одновременно, обеспечивая единообразие и минимизируя человеческие ошибки. Благодаря идемпотентности задачи выполняются только при необходимости, что делает процесс безопасным и оптимизированным.
+
+### 2. Какие ещё бывают модули Ansible для управления конфигурацией?
+
+Ansible предоставляет широкий набор встроенных модулей для управления различными аспектами инфраструктуры.
+Основные категории включают:
+
+- **Модули управления пакетами:** `apt`, `yum`, `dnf`, `pip` — для установки и обновления ПО.
+- **Модули работы с файлами:** `copy`, `template`, `file`, `unarchive` — для копирования, генерации и управления файлами и директориями.
+- **Модули управления сервисами:** `service`, `systemd` — для запуска, остановки и перезапуска демонов.
+- **Модули пользователей и групп:** `user`, `group` — для управления учётными записями.
+- **Модули работы с сетями:** `ufw`, `firewalld`, `iptables`.
+- **Модули для работы с облаками:** AWS (EC2, S3), Azure, GCP.
+- **Модули для работы с Docker:** `docker_container`, `docker_image`, `docker_volume`.
+
+Богатая экосистема модулей позволяет покрыть весь цикл конфигурации инфраструктуры.
+
+### 3. Какие проблемы вы столкнулись при создании Ansible playbook и как вы их решили?
+
+В процессе создания playbook возникли несколько типичных трудностей:
+
+1. **Проблемы с подключением по SSH.**
+   Выражалось в ошибках доступа или невозможности авторизоваться.
+   *Решение:* корректная генерация и размещение SSH-ключей, настройка прав на файлы (`chmod 600`), указание `ansible_user` и `ansible_ssh_private_key_file` в inventory.
+
+2. **Ошибки прав доступа при копировании файлов на сервер.**
+   Возникало при копировании проекта в `/var/www`.
+   *Решение:* установка правильных владельцев (`www-data`) и рекурсивных прав через модуль `file`.
+
+3. **Некорректный путь до PHP-проекта при деплое.**
+   Ansible не находил директории или копировал её не туда.
+   *Решение:* явное указание переменных `src_dir` и `app_root`, а также параметра `remote_src: yes`.
+
+4. **Неактивный Apache после развёртывания.**
+   Иногда конфигурация применялась, но служба не перезапускалась.
+   *Решение:* добавление handler’а `Reload Apache` и вызов его через `notify`.
+
+После исправления этих моментов playbook начал выполняться стабильно, а деплой стал предсказуемым и полностью автоматизированным.
+
+---
+
+## Вывод
+
+В ходе лабораторной работы была построена полностью автоматизированная инфраструктура для развёртывания PHP-приложения с использованием Docker, Jenkins и Ansible. Было создано несколько контейнеров, настроены агенты и подготовлены SSH-ключи, что позволило организовать надёжное удалённое выполнение задач. Через Jenkins были настроены конвейеры, которые автоматически собирают проект, выполняют тестирование, настраивают тестовый сервер и развёртывают приложение. Ansible playbook успешно конфигурировал сервер и обеспечил корректную работу веб-окружения.
+
+В результате проведённых действий приложение `recipe-book` было автоматически развернуто на тестовом сервере и стало доступно через браузер, что подтверждает правильность всех настроек. Работа показала, что связка Jenkins + Ansible + Docker позволяет создать удобный и воспроизводимый процесс CI/CD, минимизирующий ручные действия и исключающий ошибки при конфигурации систем.
+
+---
+
+## Библиография
+
+1. [Jenkins Documentation](https://www.jenkins.io/doc/) — официальная документация по установке, настройке и использованию системы **Jenkins**, применённой для создания конвейеров CI/CD.
+2. [Jenkins Docker Hub](https://hub.docker.com/r/jenkins/jenkins) — страница официального Docker-образа **Jenkins**, использованного для развёртывания контроллера Jenkins в контейнере.
+3. [SSH Build Agents Plugin](https://plugins.jenkins.io/ssh-slaves/) — документация по плагину **SSH Build Agents**, необходимому для подключения удалённых агентов Jenkins через SSH.
+4. [Jenkins Pipeline Syntax](https://www.jenkins.io/doc/book/pipeline/syntax/) — руководство по синтаксису декларативных конвейеров, применённых при создании файлов `.groovy`.
+5. [Docker Documentation](https://docs.docker.com/) — официальная документация по Docker, охватывающая создание образов, работу с контейнерами и настройку сетей.
+6. [Docker Compose Documentation](https://docs.docker.com/compose/) — руководство по созданию и управлению многоконтейнерными окружениями с помощью **Docker Compose**, использованного при развёртывании агентов и тестового сервера.
+7. [Ansible Documentation](https://docs.ansible.com/) — официальное руководство по использованию **Ansible**, описывающее работу playbook'ов, модулей, inventory и SSH-подключений.
+8. [Ansible Built-in Modules](https://docs.ansible.com/ansible/latest/collections/ansible/builtin/) — справочник встроенных модулей Ansible, использованных при конфигурации Apache, PHP, файловых систем и служб.

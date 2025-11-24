@@ -47,9 +47,21 @@
         owner: www-data
         group: www-data
         recurse: yes
+    
+    - name: Ensure Apache is installed
+      ansible.builtin.apt:
+       name: apache2
+       state: present
+       update_cache: yes
 
-  handlers:
-    - name: Reload Apache
+    - name: Ensure Apache is running
       ansible.builtin.service:
-        name: apache2
-        state: restarted
+       name: apache2
+       state: started
+       enabled: yes
+       
+  handlers:
+  - name: Reload Apache
+    ansible.builtin.service:
+      name: apache2
+      state: restarted
